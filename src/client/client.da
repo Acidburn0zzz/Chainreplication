@@ -16,22 +16,22 @@ class Client(process):
 	def setup(cId, bank_name,master,bankList,totalReq,getP, depP, withP,reqList,dropRate):
 		self.seq = -1
 		#output(" client id is " + str(cId))
-		self.T = 3
+		self.T = 10 
 		self.tryC = 3
 		self.responses = []
         
-	def recv(msg=('REPLY',reqID,outcome, accountNumber, balance)):
+	def receive(msg=('REPLY',reqID,outcome, accountNumber, balance)):
 		#output("client: respone rcvd " + reqID+" "+str(outcome)+" new balance = "+str(balance))
 		responses.append((reqID,balance))
 		#output(outcome)
   
-	def recv(msg=('HEAD_UPDATE',bankName,head),from_=master):
-		output("Client: Head update received from master")
+	def receive(msg=('HEAD_UPDATE',bankName,head),from_=master):
+		#output("Client: Head update received from master")
 		bankIndex = [x for x in bankList if x.name == bankName]
 		bankIndex[0].head = head
     
-	def recv(msg=('TAIL_UPDATE',bankName,tail)):
-		output("Client: Tail update received from master")
+	def receive(msg=('TAIL_UPDATE',bankName,tail)):
+		#output("Client: Tail update received from master")
 		bankIndex = [x for x in bankList if x.name == bankName]
 		bankIndex[0].tail = tail
         
@@ -44,69 +44,97 @@ class Client(process):
 	def retrieveTail(bankName):
 		send(('TAIL_INFO',bankName),to = master)
 
-	def getBalance(bankName,accountNum,nretries): 
+	def getBalance(resend,bankName,accountNum,nretries): 
 		if(nretries == tryC):
 			seq = seq+1
 		reqID1 = str(bankName)+"."+str(cId)+"."+str(self.seq)
 		bankIndex = [x for x in bankList if x.name == bankName]
 		output("Client: Sending getBalance "+reqID1)
-		psend('BALANCE', reqID1, accountNum, 0,bankIndex[0].tail)
-		if(await(some(received(('REPLY',_reqID1, _,_,_))))):
-			output("Client: get balance response received for "+str(reqID1))
-			return
-		elif timeout(T): 
-			nretries=nretries - 1
-			if (nretries > 0):
-				output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
-				getBalance(bankName, accountNum,nretries)
-			else:
-				output("Client: maximun Retry count for reqId" )
-				pass			
+		i = resend
+		while i:
+			psend('BALANCE', reqID1, accountNum, 0,bankIndex[0].tail)
+			if(await(some(received(('REPLY',_reqID1, _,_,_))))):
+				output("Client: get balance response received for "+str(reqID1))
+			elif timeout(T): 
+				nretries=nretries - 1
+				if (nretries > 0):
+					output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+					getBalance(resend,bankName, accountNum,nretries)
+				else:
+					output("Client: maximun Retry count for reqId" )
+					pass
+			i= i -1
         
-	def deposit(bankName,accountNum,amount,nretries):
+	def deposit(resend,bankName,accountNum,amount,nretries):
 		if(nretries == tryC):
 			seq = seq+1
 		reqID2 = str(bankName)+"."+str(cId)+"."+str(self.seq) 
 		bankIndex = [x for x in bankList if x.name == bankName]
 		output("Client: Sending Deposit "+reqID2+" "+str(amount));
-		psend('DEPOSIT',reqID2 ,accountNum, amount,bankIndex[0].head)
-		if(await(some(received(('REPLY',_reqID2, _,_,_))))):
-			output("Client: deposit received for "+reqID2)
-			return
-		elif timeout(T):
-			nretries= nretries - 1
-			if (nretries > 0):
-				output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
-				deposit(bankName, accountNum,amount,nretries)
-			else:
-				output("Client: maximum retry count reached for deposit")
-				pass
+		i = resend
+		while i:
+			psend('DEPOSIT',reqID2 ,accountNum, amount,bankIndex[0].head)
+			if(await(some(received(('REPLY',_reqID2, _,_,_))))):
+				output("Client: deposit received for "+reqID2)
+			elif timeout(T):
+				nretries= nretries - 1
+				if (nretries > 0):
+					output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+					deposit(resend,bankName, accountNum,amount,nretries)
+				else:
+					output("Client: maximum retry count reached for deposit")
+					pass
+			i = i-1
 
-	def withdraw(bankName,accountNum,amount,nretries): 
+	def withdraw(resend,bankName,accountNum,amount,nretries): 
 		if(nretries == tryC):
 			seq=seq+1
 		reqID = str(bankName)+"."+str(cId)+"."+str(self.seq)
 		bankIndex = [x for x in bankList if x.name == bankName]
 		output("Client: Sending withdraw "+reqID+" "+str(amount));
-		psend('WITHDRAW', reqID, accountNum, amount,bankIndex[0].head)
-		if(await(some(received(('REPLY',_reqID, _,_,_))))):
-			output("Client: withdraw received for "+str(reqID))
-			return
-		elif timeout(T): 
-			nretries=nretries - 1
-			if (nretries >0):
-				output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
-				withdraw(bankName, accountNum,amount,nretries)
-			else:
-				output("Client: maximum retry count reached for withdraw")
-				pass
+		i = resend
+		while i:
+			psend('WITHDRAW', reqID, accountNum, amount,bankIndex[0].head)
+			if(await(some(received(('REPLY',_reqID, _,_,_))))):
+				output("Client: withdraw received for "+str(reqID))
+			elif timeout(T): 
+				nretries=nretries - 1
+				if (nretries >0):
+					output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+					withdraw(resend,bankName, accountNum,amount,nretries)
+				else:
+					output("Client: maximum retry count reached for withdraw")
+					pass
+			i = i-1
+	def transfer(resend,bankName,accountNum, amount, destBank, destAccount,nretries):
+		if(nretries == tryC):
+			seq = seq + 1
+		reqID = str(bankName) + "." + str(cId) + "." + str(self.seq)
+		i = resend 
+		while i:
+			bankIndex =  [x for x in bankList if x.name == bankName]
+			output("Client: Sending transfer "+reqID+" "+str(amount));
+			send(('TRANSFER',reqID,accountNum,amount,destBank,destAccount),to=bankIndex[0].head)
+			if(await(some(received(('REPLY',_reqID,result,_,_))))):
+				output("Client: transfer received for "+str(reqID)+" result "+str(result))	
+			elif timeout(35):
+				nretries = nretries - 1
+				if(nretries > 0):
+					output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+					transfer(resend,bankName, accountNum,amount,destBank,destAccount,nretries)
+				else:   
+					output("Client: maximum retry count reached for transfer")
+					pass
+			i = i-1
+
+		
 	def psend(type,reqId,accountNum,amount,recepient):
 		prob = random.random()
 		if prob >= dropRate:
 			send((type,reqId,accountNum,amount),to=recepient)
 		else:
 			output("Client: Dropping send message with ReqID "+reqId)
-	def main():
+	def run():
 		bankName=bank_name
 		tail = None
 		time.sleep(8)
@@ -119,29 +147,33 @@ class Client(process):
 		if(len(reqList)==0):
 			while(reqSent <= totalReq):
 				val = random.random()
+				resend = random.uniform()
+				if resend < 0.8:
+					resend = 0
+				else:
+					resend = 1
 				amnt = random.randint(1,1000)
 				if( val <= getP):
 					#output("Sending getBalance")
-					getBalance(bank_name, acNumber,tryC)
+					getBalance(resend,bank_name, acNumber,tryC)
 				elif(val <= (getP+depP)):
 					#output("sending Deposit "+amnt)
-					deposit(bank_name, acNumber, amnt,tryC)
+					deposit(resend,bank_name, acNumber, amnt,tryC)
 				elif(val<= (getP+depP+withP)):
 					#output("sending withdraw "+amnt)
-					withdraw(bank_name, acNumber, amnt,tryC)
+					withdraw(resend,bank_name, acNumber, amnt,tryC)
 				reqSent+=1
 		else:
 			for tup in reqList:
 				acNumber = tup['accNo']
 				if (tup['type'] == 'getBalance'):
-					#output("Sending getBalance")
-					getBalance(bank_name,acNumber,tryC)
+					getBalance(tup['resend'],bank_name,acNumber,tryC)
 				elif(tup['type'] == 'deposit'):
-					#output("sendign Deposit "+ str(tup['amt']) )
-					deposit(bank_name,acNumber, tup['amt'],tryC)
+					deposit(tup['resend'],bank_name,acNumber, tup['amt'],tryC)
 				elif(tup['type'] == 'withdraw'):
-					#output("sending withdraw "+str(tup['amt']))
-					withdraw(bank_name,acNumber, tup['amt'],tryC)
+					withdraw(tup['resend'],bank_name,acNumber, tup['amt'],tryC)
+				elif(tup['type'] == 'transfer'):
+					transfer(tup['resend'],bank_name,acNumber,tup['amt'],tup['destBank'],tup['destAcc'],tryC)
 		await(0)
 
 def main(master,fileName):
@@ -154,7 +186,7 @@ def main(master,fileName):
 		temp = Bank(bank['bank_name'],None,None)
 		bankList.append(temp)
 	for bank in info['master']['banks']:
-		bank_client_list = new(Client,num=bank['bank_clength'])
+		bank_client_list = new(Client,num=bank['bank_clients'])
 		i=0
 		for cli in bank_client_list:
 			setup(cli, [bank['clients'][i]['client_id'],bank['bank_name'],master,bankList,bank['clients'][i]['client_total_req'],bank['clients'][i]['client_prob_getbal'],bank['clients'][i]['client_prob_dep'],bank['clients'][i]['client_prob_with'],bank['clients'][i]['client_requests'],bank['clients'][i]['client_drop_rate']])
