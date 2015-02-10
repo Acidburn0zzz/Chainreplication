@@ -1,0 +1,58 @@
+test cases
+
+phase 3 test cases following phase 2
+
+[start phase 2]
+[chain formation]
+configuration files used: config1.json, config2.json
+
+1. Master is spawned reads the configuration file about banks and servers.  
+	Master prints start message
+2. Server processes are spawned and reads configuration file
+	server processes register with master.
+3. First registering server becomes stand alone. 
+	master when receives first tail registration, makes the server stand alone
+4. Further servers from same bank register as tail one by one
+	First server is promoted to head, and latest joined server becomes tail
+5. When a server for a bank joins as tail, current tail tail becomes intermediate server
+
+[Operations]
+
+1.  Operations generated as user given commands in json file
+	configuration file used: config2.json
+	i). client 1 of bank 1 sends getBalance for account 3333
+		expected: outcome. illegal
+		result:  outcome.illegal
+	ii). client 1 of bank 1 send deposit of 100 for account 3333
+		expected: outcome.processed, balance 100
+		result: outcome.processed, balance 100
+	iii). Client 1 of bank 1 send withdraw of 50 for account 3333
+		expected: outcome.processed, balance 50
+		result: outcome.processed, balance 50
+	iv). client 2 of bank 1 send deposit of 100 for account 7777
+		expected: outcome.processed, balance 100
+		result: outcome.processed, balance 100
+	v). client 2 of bank 1 send withdraw of 150 for account 7777
+		expected: outcome.insuf_fund, balance 100
+		result: outcome.insuf_fund, balance 100
+2. Operations generated as probabilities of operations. 
+	configuration file used: config1.json
+
+	1. clients generate account numbers using a random number. 
+	2. based on probability of operation, client use a random number generator decide what operation to perform and the amount is generated in a range. 
+	number of test cases for each client: 15
+	expected result: outcome.processed, outcome.insuf_fund, outcome.illegal should be present in log 
+	result: outcome.processed, outcome.insuf_fund, outcome.illegal are present
+[end phase 2]
+
+[start of phase 3]
+[PROJECT Phase 3 submission Test cases]
+
+configuration files used: 
+1. chainAndFailureNewTailConfig.json: Configuration file to test failure of newely joined tail 
+2. chainAndFailureOldTailConfig.json:   Configuration file to test failure of old tail when a new tail joins 
+3. headDyingConfig.json :  to test head failure
+4. internalDyingConfig.json: To test internal node failing
+5. ServerAndPredDieConfig.json: A server dies and immediately its predecessor dies 
+6. ServerAndSuccDyingConfig.json: A node dies and immediately successor dies 
+7. tailDyingConfig.json: Tail dies 

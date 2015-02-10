@@ -1,0 +1,12 @@
+#!/bin/sh
+rm ./src/client/client.py
+rm ./src/server/server.py
+rm ./src/master//master.py
+dac ./src/client/client.da
+dac ./src/server/server.da
+dac ./src/master/master.da
+if [ -f ./src/client/client.py ] && [ -f ./src/server/server.py ] && [ -f ./src/master/master.py ]; then 
+	dar -f --logfilename logs/chainreplication.log -L info chainReplication.da $1
+else
+	echo "compilation error"
+fi

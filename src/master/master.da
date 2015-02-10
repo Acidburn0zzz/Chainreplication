@@ -1,0 +1,174 @@
+import sys
+import time
+import json
+from common_headers import serverRole
+class Bank:
+	def __init__(self, name, head, tail):
+		self.name = name
+		self.servers = []
+		self.clients = []
+		self.head = head
+		self.tail = tail
+	
+class Server:
+	def __init__(self, p):
+		self.p = p
+		self.successor = None
+		self.predecessor = None
+		self.role = serverRole.undefined
+		self.lastHeard = time.time()
+  		
+class Master(process):
+	def setup(bankList):pass
+
+	def recv(msg=('REGISTER',bankName),from_=client):
+		output("Master: registering client")
+		bankIndex = [x for x in bankList if x.name == bankName]
+		if(len(bankIndex) == 0):
+			return
+		bankIndex[0].clients.append(client)
+		send(('HEAD_UPDATE',bankName,bankIndex[0].head),to=client)
+		send(('TAIL_UPDATE',bankName,bankIndex[0].tail),to=client)
+
+	def recv(msg=('HEAD_INFO',bankName),from_ = client):
+		bankIndex = [x for x in bankList if x.name == bankName]
+		if(len(bankIndex) == 0):
+			return
+		bankIndex[0].clients.append(client)
+		send(('HEAD_UPDATE',bankName,bankIndex[0].head),to=client)
+
+	def recv(msg=('TAIL_INFO',bankName),from_ = client):
+		bankIndex = [x for x in bankList if x.name == bankName]
+		if(len(bankIndex) == 0):
+			return
+		bankIndex[0].clients.append(client)
+		send(('TAIL_UPDATE',bankName,bankIndex[0].tail),to=client)
+
+	def recv(msg=('JOIN_AS_TAIL',bankName), from_=p):
+		#output("Master: got join as tail "+bankName)
+		#bankIndex = [x for x in bankList if x.name == bankName]
+		for bank in bankList:
+			if bank.name == bankName:
+				bankIndex = bank
+		'''if(bankIndex==None):
+			s = Server(p)
+			b = Bank(bankName,p,p)
+			b.servers.append(s)
+			output("Master: first tail joined")
+			send(('ACK_JOIN_AS_TAIL',bankIndex.tail), to=p)'''
+		if(len(bankIndex.servers)==0):
+			s = Server(p)
+			bankIndex.servers.append(s)
+			bankIndex.head = p
+			bankIndex.tail = p
+			s.role = serverRole.stand_alone
+			output("Master:first tail joined "+bankName)
+			send(('STAND_ALONE',), to=p)
+		else:
+			s = Server(p)
+			bankIndex.servers.append(s)
+			temp = bankIndex.tail
+			s.role = serverRole.waiting_tobe_tail
+			tailInList = [x for x in bankIndex.servers if x.p == bankIndex.tail]
+			tailInList[0].successor = s
+			s.predecessor = tailInList[0]
+			send(('ACK_JOIN_AS_TAIL',temp), to=p)
+			output("Master: new tail joinining "+str(bankName))
+			send(('NEW_TAIL_JOINED',p),to=bankIndex.tail)
+	
+	def recv(msg=('ACK_AS_TAIL',), from_=server):
+		output("Master: ack as tail received")
+		for i in range(0,len(bankList)):
+			for j in bankList[i].servers:
+				if(j.p == server):
+					tailInList = [x for x in bankList[i].servers if x.p == bankList[i].tail]
+					bankList[i].tail = server
+					j.role = serverRole.tail
+					if(tailInList[0].role == serverRole.stand_alone):
+						tailInList[0].role = serverRole.head
+						send(('PROMOTE_TO_HEAD',),to=tailInList[0].p)
+					else:
+						tailInList[0].role = serverRole.internal	
+						send(('BECOME_INTERNAL',),to=tailInList[0].p)
+					output("Master: BankName :" + bankList[i].name + " New Tail "+ str(server))
+	def recv(msg=('PREDECESSOR_RECONCILE',lastProcessedReqId), from_=srvr):
+		for bank in bankList:
+			for server in bank.servers:
+				if(server.p == srvr):
+					server.predecessor.successor = server
+					output("Master "+str(server.predecessor.p)+" has new successor "+str(server.p))
+					output("Master: last request id processed "+str(lastProcessedReqId))
+					send(('SUCCESSOR_UPDATE',server.p,lastProcessedReqId),to=server.predecessor.p)
+					break
+	def recv(msg=('HEARTBEAT',), from_=srvr):
+		#output("received heartbeat\n")
+		for bank in bankList:
+			for server in bank.servers:
+				if(server.p == srvr):
+					server.lastHeard = time.time()
+					break
+		for bank in bankList:
+			for server in bank.servers:
+				if((time.time() - server.lastHeard) >= 10):
+					output("Master: "+str(server.p) + "died")
+					if(server.role == serverRole.head):
+						bank.head = server.successor.p
+						if(server.successor.role == serverRole.tail):
+							server.successor.role = serverRole.stand_alone
+						else:
+							output("Master: "+str(bank.head)+ "will be new head")
+							server.successor.role = serverRole.head
+						send(('PROMOTE_TO_HEAD',), to=bank.head)
+						for client in bank.clients:
+							send(('HEAD_UPDATE',bank.name,bank.head), to=client)
+						bank.servers.remove(server)
+					elif(server.role == serverRole.tail):
+						if(server.successor != None):
+							bank.tail = server.successor.p
+							output("tail died during chain extension")
+							server.successor.role = serverRole.tail
+							server.successor.predecessor = server.predecessor
+							send(('PROMOTE_TO_TAIL',),to=server.successor.p)
+							send(('PREDECESSOR_UPDATE',server.predecessor.p),to=server.successor.p)
+							bank.servers.remove(server)
+							continue
+						bank.tail = server.predecessor.p
+						if(server.predecessor.role == serverRole.head):
+							server.predecessor.role = serverRole.stand_alone
+						else:
+							output("Master: "+str(server.predecessor.p)+ "will be new tail")
+							server.predecessor.role = serverRole.tail
+						send(('PROMOTE_TO_TAIL',), to=bank.tail)
+						for client in bank.clients:
+							send(('TAIL_UPDATE',bank.name,bank.tail), to=client)
+						bank.servers.remove(server)
+					elif(server.role == serverRole.internal):
+						output("Master: "+str(server.successor.p)+" has new predecessor "+str(server.predecessor.p))
+						server.successor.predecessor = server.predecessor
+						send(('PREDECESSOR_UPDATE',server.predecessor.p), to=server.successor.p)
+						bank.servers.remove(server)
+					elif(server.role == serverRole.waiting_tobe_tail):
+						output("Master: server which was waiting to be tail died! chain extension aborted")
+						server.predecessor.successor = None
+						bank.servers.remove(server)
+					elif(server.role == serverRole.stand_alone):
+						if(server.successor != None):
+							server.successor.role = serverRole.stand_alone
+							bank.head = server.successor.p
+							bank.tail = server.successor.p
+						bank.servers.remove(server)
+	def main():
+		output(" Master: Master running")  
+		await(0)
+
+def main(fileName):
+	json_data = open(fileName)
+	info = json.load(json_data)
+	bankList = []
+	for bank in info['master']['banks']:
+		temp = Bank(bank['bank_name'],None,None)
+		bankList.append(temp)
+	master = new(Master)
+	setup(master,[bankList])
+	start(master)
+	return master

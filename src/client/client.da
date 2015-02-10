@@ -1,0 +1,165 @@
+import json
+import sys
+from itertools import chain
+import time
+import random
+from common_headers import opOutcome
+
+class Bank:
+    def __init__(self, name, head, tail):
+    	self.name = name
+    	self.head = head
+    	self.tail = tail
+
+class Client(process):
+
+	def setup(cId, bank_name,master,bankList,totalReq,getP, depP, withP,reqList,dropRate):
+		self.seq = -1
+		#output(" client id is " + str(cId))
+		self.T = 3
+		self.tryC = 3
+		self.responses = []
+        
+	def recv(msg=('REPLY',reqID,outcome, accountNumber, balance)):
+		#output("client: respone rcvd " + reqID+" "+str(outcome)+" new balance = "+str(balance))
+		responses.append((reqID,balance))
+		#output(outcome)
+  
+	def recv(msg=('HEAD_UPDATE',bankName,head),from_=master):
+		output("Client: Head update received from master")
+		bankIndex = [x for x in bankList if x.name == bankName]
+		bankIndex[0].head = head
+    
+	def recv(msg=('TAIL_UPDATE',bankName,tail)):
+		output("Client: Tail update received from master")
+		bankIndex = [x for x in bankList if x.name == bankName]
+		bankIndex[0].tail = tail
+        
+	def register(bankName):
+		send(('REGISTER',bankName),to = master)
+
+	def retrieveHead(bankName):
+		send(('HEAD_INFO',bankName),to = master)
+    
+	def retrieveTail(bankName):
+		send(('TAIL_INFO',bankName),to = master)
+
+	def getBalance(bankName,accountNum,nretries): 
+		if(nretries == tryC):
+			seq = seq+1
+		reqID1 = str(bankName)+"."+str(cId)+"."+str(self.seq)
+		bankIndex = [x for x in bankList if x.name == bankName]
+		output("Client: Sending getBalance "+reqID1)
+		psend('BALANCE', reqID1, accountNum, 0,bankIndex[0].tail)
+		if(await(some(received(('REPLY',_reqID1, _,_,_))))):
+			output("Client: get balance response received for "+str(reqID1))
+			return
+		elif timeout(T): 
+			nretries=nretries - 1
+			if (nretries > 0):
+				output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+				getBalance(bankName, accountNum,nretries)
+			else:
+				output("Client: maximun Retry count for reqId" )
+				pass			
+        
+	def deposit(bankName,accountNum,amount,nretries):
+		if(nretries == tryC):
+			seq = seq+1
+		reqID2 = str(bankName)+"."+str(cId)+"."+str(self.seq) 
+		bankIndex = [x for x in bankList if x.name == bankName]
+		output("Client: Sending Deposit "+reqID2+" "+str(amount));
+		psend('DEPOSIT',reqID2 ,accountNum, amount,bankIndex[0].head)
+		if(await(some(received(('REPLY',_reqID2, _,_,_))))):
+			output("Client: deposit received for "+reqID2)
+			return
+		elif timeout(T):
+			nretries= nretries - 1
+			if (nretries > 0):
+				output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+				deposit(bankName, accountNum,amount,nretries)
+			else:
+				output("Client: maximum retry count reached for deposit")
+				pass
+
+	def withdraw(bankName,accountNum,amount,nretries): 
+		if(nretries == tryC):
+			seq=seq+1
+		reqID = str(bankName)+"."+str(cId)+"."+str(self.seq)
+		bankIndex = [x for x in bankList if x.name == bankName]
+		output("Client: Sending withdraw "+reqID+" "+str(amount));
+		psend('WITHDRAW', reqID, accountNum, amount,bankIndex[0].head)
+		if(await(some(received(('REPLY',_reqID, _,_,_))))):
+			output("Client: withdraw received for "+str(reqID))
+			return
+		elif timeout(T): 
+			nretries=nretries - 1
+			if (nretries >0):
+				output("Client: Resending for request Id " + str(bankName)+"."+str(cId)+"."+str(self.seq))
+				withdraw(bankName, accountNum,amount,nretries)
+			else:
+				output("Client: maximum retry count reached for withdraw")
+				pass
+	def psend(type,reqId,accountNum,amount,recepient):
+		prob = random.random()
+		if prob >= dropRate:
+			send((type,reqId,accountNum,amount),to=recepient)
+		else:
+			output("Client: Dropping send message with ReqID "+reqId)
+	def main():
+		bankName=bank_name
+		tail = None
+		time.sleep(8)
+		register(bank_name)
+		await(some(received(('TAIL_UPDATE', _, _))))
+		#deposit(bank_name, 123456,10000)
+		#withdraw(bank_name,123456,20)
+		reqSent = 0;
+		acNumber = random.randint(2000,3000)
+		if(len(reqList)==0):
+			while(reqSent <= totalReq):
+				val = random.random()
+				amnt = random.randint(1,1000)
+				if( val <= getP):
+					#output("Sending getBalance")
+					getBalance(bank_name, acNumber,tryC)
+				elif(val <= (getP+depP)):
+					#output("sending Deposit "+amnt)
+					deposit(bank_name, acNumber, amnt,tryC)
+				elif(val<= (getP+depP+withP)):
+					#output("sending withdraw "+amnt)
+					withdraw(bank_name, acNumber, amnt,tryC)
+				reqSent+=1
+		else:
+			for tup in reqList:
+				acNumber = tup['accNo']
+				if (tup['type'] == 'getBalance'):
+					#output("Sending getBalance")
+					getBalance(bank_name,acNumber,tryC)
+				elif(tup['type'] == 'deposit'):
+					#output("sendign Deposit "+ str(tup['amt']) )
+					deposit(bank_name,acNumber, tup['amt'],tryC)
+				elif(tup['type'] == 'withdraw'):
+					#output("sending withdraw "+str(tup['amt']))
+					withdraw(bank_name,acNumber, tup['amt'],tryC)
+		await(0)
+
+def main(master,fileName):
+	json_data = open(fileName)
+	info = json.load(json_data)
+	bankList = []
+	bank_client_list = []
+	bank_client_dict = {}
+	for bank in info['master']['banks']:
+		temp = Bank(bank['bank_name'],None,None)
+		bankList.append(temp)
+	for bank in info['master']['banks']:
+		bank_client_list = new(Client,num=bank['bank_clength'])
+		i=0
+		for cli in bank_client_list:
+			setup(cli, [bank['clients'][i]['client_id'],bank['bank_name'],master,bankList,bank['clients'][i]['client_total_req'],bank['clients'][i]['client_prob_getbal'],bank['clients'][i]['client_prob_dep'],bank['clients'][i]['client_prob_with'],bank['clients'][i]['client_requests'],bank['clients'][i]['client_drop_rate']])
+			i+=1
+		bank_client_dict[bank['bank_name']] = bank_client_list			
+	
+	for bank in bank_client_dict:
+                start(bank_client_dict[bank])
