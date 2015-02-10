@@ -19,5 +19,8 @@
    Kanchan coded the Client and the Master file in Erlang and DistAlgo, and made the configuration file for Erlang.
    Praveen coded the Server file in Erlang and DistAlgo, and made the configuration file for DistAlgo.
    The integration and debugging of the codes was a collabarative effort.
+
+
+
    
 
