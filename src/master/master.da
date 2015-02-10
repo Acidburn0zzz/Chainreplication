@@ -21,7 +21,7 @@ class Server:
 class Master(process):
 	def setup(bankList):pass
 
-	def recv(msg=('REGISTER',bankName),from_=client):
+	def receive(msg=('REGISTER',bankName),from_=client):
 		output("Master: registering client")
 		bankIndex = [x for x in bankList if x.name == bankName]
 		if(len(bankIndex) == 0):
@@ -30,21 +30,21 @@ class Master(process):
 		send(('HEAD_UPDATE',bankName,bankIndex[0].head),to=client)
 		send(('TAIL_UPDATE',bankName,bankIndex[0].tail),to=client)
 
-	def recv(msg=('HEAD_INFO',bankName),from_ = client):
+	def receive(msg=('HEAD_INFO',bankName),from_ = client):
 		bankIndex = [x for x in bankList if x.name == bankName]
 		if(len(bankIndex) == 0):
 			return
 		bankIndex[0].clients.append(client)
 		send(('HEAD_UPDATE',bankName,bankIndex[0].head),to=client)
 
-	def recv(msg=('TAIL_INFO',bankName),from_ = client):
+	def receive(msg=('TAIL_INFO',bankName),from_ = client):
 		bankIndex = [x for x in bankList if x.name == bankName]
 		if(len(bankIndex) == 0):
 			return
 		bankIndex[0].clients.append(client)
 		send(('TAIL_UPDATE',bankName,bankIndex[0].tail),to=client)
 
-	def recv(msg=('JOIN_AS_TAIL',bankName), from_=p):
+	def receive(msg=('JOIN_AS_TAIL',bankName), from_=p):
 		#output("Master: got join as tail "+bankName)
 		#bankIndex = [x for x in bankList if x.name == bankName]
 		for bank in bankList:
@@ -76,7 +76,7 @@ class Master(process):
 			output("Master: new tail joinining "+str(bankName))
 			send(('NEW_TAIL_JOINED',p),to=bankIndex.tail)
 	
-	def recv(msg=('ACK_AS_TAIL',), from_=server):
+	def receive(msg=('ACK_AS_TAIL',), from_=server):
 		output("Master: ack as tail received")
 		for i in range(0,len(bankList)):
 			for j in bankList[i].servers:
@@ -91,7 +91,7 @@ class Master(process):
 						tailInList[0].role = serverRole.internal	
 						send(('BECOME_INTERNAL',),to=tailInList[0].p)
 					output("Master: BankName :" + bankList[i].name + " New Tail "+ str(server))
-	def recv(msg=('PREDECESSOR_RECONCILE',lastProcessedReqId), from_=srvr):
+	def receive(msg=('PREDECESSOR_RECONCILE',lastProcessedReqId), from_=srvr):
 		for bank in bankList:
 			for server in bank.servers:
 				if(server.p == srvr):
@@ -100,7 +100,7 @@ class Master(process):
 					output("Master: last request id processed "+str(lastProcessedReqId))
 					send(('SUCCESSOR_UPDATE',server.p,lastProcessedReqId),to=server.predecessor.p)
 					break
-	def recv(msg=('HEARTBEAT',), from_=srvr):
+	def receive(msg=('HEARTBEAT',), from_=srvr):
 		#output("received heartbeat\n")
 		for bank in bankList:
 			for server in bank.servers:
@@ -157,7 +157,7 @@ class Master(process):
 							bank.head = server.successor.p
 							bank.tail = server.successor.p
 						bank.servers.remove(server)
-	def main():
+	def run():
 		output(" Master: Master running")  
 		await(0)
 
